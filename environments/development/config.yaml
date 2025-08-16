@@ -1,12 +1,18 @@
 general:
-  project: "example-com"
+  project: "terragrunt-aws"
   env-short: "dev"
   regions:
-    - eu-west-1
+    - ap-southeast-1
 
-default-aws-auth-extra-roles: &default-aws-auth-extra-roles
-  - github-actions-assumed-role
-  - AWSReservedSSO_AWSAdministratorAccess_*
+# No IAM roles for initial deployment - will add access entries manually
+default-aws-auth-extra-roles: &default-aws-auth-extra-roles []
+
+# IAM user access entries for cluster access
+default-access-entries: &default-access-entries
+  - principal-arn: "arn:aws:iam::145065858520:user/dell-admin"
+    policy-associations:
+      - policy-arn: "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+        access-scope: "cluster"
 
 default-exposed-ports: &default-exposed-ports
   traefik-nodeport:
@@ -19,19 +25,17 @@ default-eks-public-access-cidrs: &default-eks-public-access-cidrs
   basti0n: 127.0.0.0/32
 
 default-helm-charts: &default-helm-charts
-  cf-eks-baseline:
-    repository: https://cardano-foundation.github.io/cf-helm-charts/
-    version: 0.1.0
-    namespace: kube-system
+  srs-server:
+    repository: http://helm.ossrs.io/stable
+    version: latest
+    namespace: srs
+    valuesYAMLTemplate:
+      candidate: "auto"
 
 default-eks-addons: &default-eks-addons
   coredns:
-    addon-version: v1.11.4-eksbuild.2
+    addon-version: v1.12.2-eksbuild.4
     resolve-conflicts: "OVERWRITE"
-
-# key here is a mere human-readable description/tag
-default-iam-policies: &default-iam-policies
-  enable-ebs-creation: "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
 
 alb-dns-aliases: &default-alb-dns-aliases
   - api
@@ -43,20 +47,18 @@ eks:
   node-group-module-source: cloudposse/eks-node-group/aws
   node-group-module-version: 3.3.0
   regions:
-    eu-west-1:
+    ap-southeast-1:
       cluster-name-0:
         alb-dns-aliases: *default-alb-dns-aliases
         aws-auth-extra-roles: *default-aws-auth-extra-roles
-        k8s-version: 1.30
-        public-access-cidrs: # this is used for kube api
-          <<: *default-eks-public-access-cidrs
+        access-entries: *default-access-entries
+        k8s-version: 1.33
+        endpoint-public-access: true
+        public-access-cidrs:
+          all: 0.0.0.0/0
         network:
-          vpc: example-com
-          allowed-cidr-blocks: # this is used for an special sg which allow full access to all the ports
-            <<: *default-eks-public-access-cidrs
+          vpc: terragrunt-aws
           subnets:
-            - name: default
-              kind: public
             - name: default
               kind: private
         addons:
@@ -64,76 +66,29 @@ eks:
         helm-charts:
           <<: *default-helm-charts
         # FIXME: missing ec2 names while using managed node groups
-        # https://github.com/terraform-aws-modules/terraform-aws-eks/issues/2032  
+        # https://github.com/terraform-aws-modules/terraform-aws-eks/issues/2032
         # potential fix: use our own launch templates
         node-groups:
-          public:
-            network:
-              subnet:
-                name: default
-                kind: public
-              availability-zones:
-                - b
-            desired-size: 1
-            min-size: 1
-            max-size: 3
-            block-device-mappings:
-              xvda:
-                volume-size: 40 # gbs
-                volume-type: gp3
-                encrypted: false
-                delete-on-termination: true
-            autoscaler-enabled: true
-            cluster-log-retention-period: 7
-            instance-types: # if multiple are specified, the eks-node-group will randomly pick one
-              - t3a.xlarge
-            exposed-ports:
-              <<: *default-exposed-ports
-            extra-iam-policies:
-              <<: *default-iam-policies
-          private:
+          workers:
             network:
               subnet:
                 name: default
                 kind: private
-              availability-zones:
-                - b
-            desired-size: 1
-            min-size: 1
-            max-size: 3
-            instance-types:
-              - t3a.medium
-              - t3a.xlarge
-      cluster-name-1:
-        alb-dns-aliases: *default-alb-dns-aliases
-        aws-auth-extra-roles: *default-aws-auth-extra-roles
-        k8s-version: 1.33
-        network:
-          vpc: example-com
-          subnet:
-            name: default
-            kind: private
-        addons:
-          <<: *default-eks-addons
-        helm-charts:
-          <<: *default-helm-charts
-        # FIXME: missing ec2 names while using managed node groups
-        # https://github.com/terraform-aws-modules/terraform-aws-eks/issues/2032  
-        # potential fix: use our own launch templates
-        node-groups:
-          workers:
-            desired-size: 1
+              # Removing availability-zones to use simple private_subnet_ids path
+              # availability-zones:
+              #   - a
+            desired-size: 2
             min-size: 1
             max-size: 10
             ami-type: AL2023_x86_64_STANDARD
             instance-types:
-              - t3a.medium
+              - t3.small
             autoscaler-enabled: false
         
 network:
-  default_region: "eu-west-1"
+  default_region: "ap-southeast-1"
   # NOTE: vpc names will be prefixed with env_short
-  default_vpc: "example-com"
+  default_vpc: "terragrunt-aws"
   route53:
     zones:
       default:
@@ -144,8 +99,8 @@ network:
     subnet-module-source: "cloudposse/dynamic-subnets/aws"
     subnet-module-version: "2.4.2"
     regions:
-      eu-west-1:
-        example-com:
+      ap-southeast-1:
+        terragrunt-aws:
           ipv4-cidr: 172.1.0.0/16
           subnets:
             default:
@@ -155,6 +110,6 @@ network:
               igw: true
               ngw: true
               availability-zones:
-              - eu-west-1a
-              - eu-west-1b
-              - eu-west-1c
+              - ap-southeast-1a
+              - ap-southeast-1b
+              - ap-southeast-1c

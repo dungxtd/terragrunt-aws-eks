@@ -151,6 +151,19 @@ module "eks_cluster_${eks_region_k}_${eks_name}" {
       }
     },
   %{ endfor ~}
+  %{ for access_entry in try(eks_values.access-entries, [] ) ~}
+    "${access_entry.principal-arn}" = {
+      access_policy_associations = {
+        %{ for policy_assoc in access_entry.policy-associations ~}
+        "${replace(policy_assoc.policy-arn, "arn:aws:eks::aws:cluster-access-policy/", "")}" = {
+          access_scope = {
+            type = "${policy_assoc.access-scope}"
+          }
+        },
+        %{ endfor ~}
+      }
+    },
+  %{ endfor ~}
   }
 
 }
