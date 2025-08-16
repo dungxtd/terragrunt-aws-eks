@@ -52,8 +52,8 @@ inputs = {
 
 }
 
-generate "dynamic-alb-modules" {
-  path      = "dynamic-alb-modules.tf"
+generate "dynamic-lb-modules" {
+  path      = "dynamic-lb-modules.tf"
   if_exists = "overwrite"
   contents  = <<EOF
 
@@ -80,6 +80,8 @@ locals {
 %{ for eks_region_k, eks_region_v in try(local.config.eks.regions, { } ) ~}
 
   %{ for eks_name, eks_values in eks_region_v ~}
+
+    %{ if !try(eks_values.alb-http-only, false) }
 
 module "acm_request_certificate_${eks_region_k}_${eks_name}" {
 
@@ -111,7 +113,11 @@ module "acm_request_certificate_${eks_region_k}_${eks_name}" {
   ])
 }
 
-module "alb_${eks_region_k}_${eks_name}" {
+    %{ endif ~}
+
+    %{ for deployment_type in try(eks_values.deployment-types, [try(eks_values.deployment-type, "alb")]) ~}
+
+module "lb_${eks_region_k}_${eks_name}_${deployment_type}" {
 
   providers = {
     aws = aws.${eks_region_k}
@@ -120,6 +126,7 @@ module "alb_${eks_region_k}_${eks_name}" {
   source = "./tf-module"
 
   cluster_name              = split(":", jsondecode(var.eks_clusters_json).eks_cluster_${eks_region_k}_${eks_name}.eks_info.eks_cluster_id)[0]
+  load_balancer_type        = "${deployment_type}" == "alb" ? "application" : "${deployment_type}" == "nlb" ? "network" : "application"
 
   subnet_ids_list = concat(
   %{ for subnet in eks_values.network.subnets ~}
@@ -131,29 +138,46 @@ module "alb_${eks_region_k}_${eks_name}" {
 
   vpcid                     = jsondecode(var.vpcs_json).vpc_${eks_region_k}_${eks_values.network.vpc}.vpc_info.vpc_id
   autoscale_group_names     = toset( [
-    %{ for eng_name, eng_values in eks_values.node-groups ~}  
+    %{ for eng_name, eng_values in eks_values.node-groups ~}
       %{ if try(eng_values.exposed-ports, "") != "" }
     flatten(jsondecode(var.eks_node_groups_json).eks_node_group_${eks_region_k}_${eks_name}_${eng_name}.eng_info.eks_node_group_resources[*][*].autoscaling_groups[*].name)[0],
       %{ endif ~}
     %{ endfor ~}
   ] )
   cluster_security_group_ids = toset( [
-    %{ for eng_name, eng_values in eks_values.node-groups ~}  
+    %{ for eng_name, eng_values in eks_values.node-groups ~}
       %{ if try(eng_values.exposed-ports, "") != "" }
     jsondecode(var.eks_node_groups_sg_json).eks_node_group_sg_${eks_region_k}_${eks_name}_${eng_name}.eng_sg_info.id,
       %{ endif ~}
     %{ endfor ~}
   ] )
+
   tags                      = {}
-  node_port                 = 30443
-  node_port_protocol        = "HTTPS"
-  enable_http               = true
-  enable_https              = true
-  http_redirect             = true
-  certificate_arn           = module.acm_request_certificate_${eks_region_k}_${eks_name}.arn
   internal                  = false
 
+  # ALB specific settings - targeting NodePort 30080 for HTTP traffic
+  node_port                 = "${deployment_type}" == "alb" ? 30080 : 30080
+  node_port_protocol        = "${deployment_type}" == "alb" ? "HTTP" : "HTTP"
+  enable_http               = "${deployment_type}" == "alb" ? true : false
+  enable_https              = "${deployment_type}" == "alb" ? false : false
+  http_redirect             = "${deployment_type}" == "alb" ? false : false
+  certificate_arn           = ""
+
+  # NLB specific settings - targeting NodePort 31935 for RTMP traffic
+  enable_rtmp               = "${deployment_type}" == "nlb" ? true : false
+  rtmp_port                 = 1935      # NLB listener port
+  rtmp_node_port            = 31935     # NodePort target for RTMP
+  enable_cross_zone_load_balancing = "${deployment_type}" == "nlb" ? true : false
+
+  # Health check configurations
+  health_check_path         = "/"
+  health_check_port_alb     = 30080     # Health check on NodePort
+  health_check_protocol_alb = "HTTP"
+  health_check_matcher      = "200-499"
+
 }
+
+    %{ endfor ~}
 
   %{ endfor ~}
 
@@ -166,6 +190,28 @@ generate "dynamic-outputs" {
   if_exists = "overwrite"
   contents  = <<EOF
 
+output eks_load_balancers {
+
+    value = merge(
+
+%{ for eks_region_k, eks_region_v in try(local.config.eks.regions, { } ) ~}
+
+  %{ for eks_name, eks_values in eks_region_v ~}
+    %{ for deployment_type in try(eks_values.deployment-types, [try(eks_values.deployment-type, "alb")]) ~}
+      {
+        "eks_${deployment_type}_${eks_region_k}_${eks_name}" = {
+          "${deployment_type}_info" = module.lb_${eks_region_k}_${eks_name}_${deployment_type}
+        }
+      },
+    %{ endfor ~}
+
+  %{ endfor ~}
+
+%{ endfor ~}
+   )
+}
+
+# Keep ALB output for backward compatibility
 output eks_albs {
 
     value = merge(
@@ -173,10 +219,15 @@ output eks_albs {
 %{ for eks_region_k, eks_region_v in try(local.config.eks.regions, { } ) ~}
 
   %{ for eks_name, eks_values in eks_region_v ~}
+    %{ for deployment_type in try(eks_values.deployment-types, [try(eks_values.deployment-type, "alb")]) ~}
+      %{ if deployment_type == "alb" }
       {
-        for key, value in module.alb_${eks_region_k}_${eks_name}[*]:
-            "eks_alb_${eks_region_k}_${eks_name}" => { "alb_info" = value }
+        "eks_alb_${eks_region_k}_${eks_name}" = {
+          "alb_info" = module.lb_${eks_region_k}_${eks_name}_${deployment_type}
+        }
       },
+      %{ endif ~}
+    %{ endfor ~}
 
   %{ endfor ~}
 

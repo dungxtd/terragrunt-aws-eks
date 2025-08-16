@@ -1,3 +1,14 @@
+# Terragrunt AWS EKS Configuration
+# This configuration supports multiple deployment types for load balancers:
+# - alb: Application Load Balancer for HTTP/HTTPS traffic (Layer 7)
+# - nlb: Network Load Balancer for TCP/UDP traffic (Layer 4)
+# - route53: DNS routing (existing)
+#
+# For SRS (Simple Realtime Server):
+# - ALB handles HTTP-FLV web UI on port 8080
+# - NLB handles RTMP push traffic on port 1935
+# - Both can be deployed together for complete SRS functionality
+
 general:
   project: "terragrunt-aws"
   env-short: "dev"
@@ -30,7 +41,51 @@ default-helm-charts: &default-helm-charts
     version: latest
     namespace: srs
     valuesYAMLTemplate:
+      # SRS configuration
       candidate: "auto"
+      conf:
+        SRS_LOG_TANK: "console"
+        SRS_HTTP_SERVER_ENABLED: "on"
+        SRS_HTTP_API_ENABLED: "on"
+        SRS_VHOST_HTTP_REMUX_ENABLED: "on"
+        SRS_VHOST_HLS_ENABLED: "on"
+        SRS_SRT_SERVER_ENABLED: "on"
+        SRS_VHOST_SRT_ENABLED: "on"
+        SRS_VHOST_SRT_TO_RTMP: "on"
+        SRS_RTC_SERVER_ENABLED: "on"
+        SRS_RTC_SERVER_CANDIDATE: "*"
+        SRS_VHOST_RTC_ENABLED: "on"
+        SRS_VHOST_RTC_RTMP_TO_RTC: "on"
+        SRS_VHOST_RTC_RTC_TO_RTMP: "on"
+      # Service configuration - use NodePort to work with ALB/NLB infrastructure
+      service:
+        type: NodePort     # Use NodePort to work with our ALB/NLB infrastructure
+        ports:
+          - name: rtmp
+            port: 1935         # RTMP push port (will be exposed via NLB)
+            targetPort: 1935
+            nodePort: 31935    # NodePort for RTMP (NLB target)
+            protocol: TCP
+          - name: http
+            port: 8080         # HTTP-FLV web UI port (will be exposed via ALB)
+            targetPort: 8080
+            nodePort: 30080    # NodePort for HTTP (ALB target)
+            protocol: TCP
+          - name: api
+            port: 1985         # HTTP API port
+            targetPort: 1985
+            nodePort: 31985    # NodePort for API
+            protocol: TCP
+          - name: srt
+            port: 10080        # SRT port
+            targetPort: 10080
+            nodePort: 32080    # NodePort for SRT
+            protocol: UDP
+          - name: rtc
+            port: 8000         # WebRTC port
+            targetPort: 8000
+            nodePort: 32000    # NodePort for WebRTC
+            protocol: UDP
 
 default-eks-addons: &default-eks-addons
   coredns:
@@ -40,6 +95,7 @@ default-eks-addons: &default-eks-addons
 alb-dns-aliases: &default-alb-dns-aliases
   - api
   - auth-api
+  - srs-web  # For SRS HTTP-FLV web UI
 
 eks:
   cluster-module-source: cloudposse/eks-cluster/aws
@@ -56,11 +112,42 @@ eks:
         endpoint-public-access: true
         public-access-cidrs:
           all: 0.0.0.0/0
+        # Multiple deployment types: ALB for HTTP-FLV (port 8080), NLB for RTMP (port 1935)
+        deployment-types:
+          - alb   # For SRS HTTP-FLV web UI on port 8080
+          - nlb   # For SRS RTMP push on port 1935
+        # HTTP-only ALB (no SSL certificates, no Route53 required)
+        alb-http-only: true
+
+        # Load Balancer specific configurations
+        load-balancer-config:
+          alb:
+            # ALB targets NodePort for HTTP traffic
+            target-port: 30080        # NodePort for HTTP service
+            target-protocol: "HTTP"
+            listener-port: 80         # ALB listens on port 80
+            listener-protocol: "HTTP"
+            health-check:
+              path: "/"
+              port: 30080
+              protocol: "HTTP"
+              matcher: "200-499"
+          nlb:
+            # NLB targets NodePort for RTMP traffic
+            target-port: 31935        # NodePort for RTMP service
+            target-protocol: "TCP"
+            listener-port: 1935       # NLB listens on port 1935
+            listener-protocol: "TCP"
+            health-check:
+              port: 31935
+              protocol: "TCP"
         network:
           vpc: terragrunt-aws
           subnets:
             - name: default
               kind: private
+            - name: default
+              kind: public  # Need public subnets for load balancers
         addons:
           <<: *default-eks-addons
         helm-charts:
@@ -84,15 +171,10 @@ eks:
             instance-types:
               - t3.small
             autoscaler-enabled: false
-        
 network:
   default_region: "ap-southeast-1"
   # NOTE: vpc names will be prefixed with env_short
   default_vpc: "terragrunt-aws"
-  route53:
-    zones:
-      default:
-        tld: "example.com"
   vpc:
     vpc-module-source: "cloudposse/vpc/aws"
     vpc-module-version: "2.1.1"

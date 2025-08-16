@@ -28,6 +28,10 @@ variable "load_balancer_type" {
   default     = "application"
   description = "Type of loadbalancer - application or network"
   type        = string
+  validation {
+    condition     = contains(["application", "network"], var.load_balancer_type)
+    error_message = "Load balancer type must be either 'application' or 'network'."
+  }
 }
 
 variable "target_type" {
@@ -44,7 +48,7 @@ variable "access_logs" {
 variable "tags" {
   default     = {}
   description = "Tags to add for ALB"
-  type        = map
+  type        = map(any)
 }
 
 variable "enable_deletion_protection" {
@@ -131,4 +135,72 @@ variable "stickiness_type" {
   type        = string
   description = "Type of stickiness"
   default     = "lb_cookie"
+}
+
+# NLB specific variables
+variable "enable_cross_zone_load_balancing" {
+  type        = bool
+  default     = true
+  description = "Enable cross zone load balancing for NLB"
+}
+
+variable "rtmp_port" {
+  default     = 1935
+  type        = number
+  description = "RTMP port for SRS streaming (NLB only)"
+}
+
+variable "rtmp_node_port" {
+  default     = 31935
+  type        = number
+  description = "NodePort for RTMP service (NLB target)"
+}
+
+# Health check variables
+variable "health_check_path" {
+  default     = "/"
+  type        = string
+  description = "Health check path for ALB"
+}
+
+variable "health_check_port_alb" {
+  default     = 30080
+  type        = number
+  description = "Health check port for ALB"
+}
+
+variable "health_check_protocol_alb" {
+  default     = "HTTP"
+  type        = string
+  description = "Health check protocol for ALB"
+}
+
+variable "health_check_matcher" {
+  default     = "200-499"
+  type        = string
+  description = "Health check matcher for ALB"
+}
+
+variable "enable_rtmp" {
+  type        = bool
+  default     = false
+  description = "Enable RTMP port listener for NLB"
+}
+
+variable "health_check_interval_nlb" {
+  default     = 30
+  description = "Health check interval in seconds for NLB"
+  type        = number
+}
+
+variable "healthy_threshold_nlb" {
+  default     = 3
+  description = "Number of consecutive health checks successes required for NLB"
+  type        = number
+}
+
+variable "unhealthy_threshold_nlb" {
+  default     = 3
+  description = "Number of consecutive health check failures required for NLB"
+  type        = number
 }

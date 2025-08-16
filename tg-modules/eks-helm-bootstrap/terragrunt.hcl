@@ -11,7 +11,8 @@ include "tf_main_config" {
 
 dependencies {
   paths = [
-    "../../tg-modules//eks"
+    "../../tg-modules//eks",
+    "../../tg-modules//eks-lb"
   ]
 }
 
@@ -25,9 +26,20 @@ dependency "eks" {
   }
 }
 
+dependency "eks_lb" {
+  config_path = "../../tg-modules//eks-lb"
+  skip_outputs = false
+  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
+  mock_outputs = {
+    eks_load_balancers = {}
+    eks_albs = {}
+  }
+}
+
 inputs = {
 
   eks_clusters_json = dependency.eks.outputs.eks_clusters
+  eks_load_balancers_json = dependency.eks_lb.outputs.eks_load_balancers
 
 }
 
