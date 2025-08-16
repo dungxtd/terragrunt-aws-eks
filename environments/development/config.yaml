@@ -1,0 +1,160 @@
+general:
+  project: "example-com"
+  env-short: "dev"
+  regions:
+    - eu-west-1
+
+default-aws-auth-extra-roles: &default-aws-auth-extra-roles
+  - github-actions-assumed-role
+  - AWSReservedSSO_AWSAdministratorAccess_*
+
+default-exposed-ports: &default-exposed-ports
+  traefik-nodeport:
+    number: 30443
+    protocol: tcp
+    cidr-filters:
+      - 0.0.0.0/0
+
+default-eks-public-access-cidrs: &default-eks-public-access-cidrs
+  basti0n: 127.0.0.0/32
+
+default-helm-charts: &default-helm-charts
+  cf-eks-baseline:
+    repository: https://cardano-foundation.github.io/cf-helm-charts/
+    version: 0.1.0
+    namespace: kube-system
+
+default-eks-addons: &default-eks-addons
+  coredns:
+    addon-version: v1.11.4-eksbuild.2
+    resolve-conflicts: "OVERWRITE"
+
+# key here is a mere human-readable description/tag
+default-iam-policies: &default-iam-policies
+  enable-ebs-creation: "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+
+alb-dns-aliases: &default-alb-dns-aliases
+  - api
+  - auth-api
+
+eks:
+  cluster-module-source: cloudposse/eks-cluster/aws
+  cluster-module-version: 4.6.0
+  node-group-module-source: cloudposse/eks-node-group/aws
+  node-group-module-version: 3.3.0
+  regions:
+    eu-west-1:
+      cluster-name-0:
+        alb-dns-aliases: *default-alb-dns-aliases
+        aws-auth-extra-roles: *default-aws-auth-extra-roles
+        k8s-version: 1.30
+        public-access-cidrs: # this is used for kube api
+          <<: *default-eks-public-access-cidrs
+        network:
+          vpc: example-com
+          allowed-cidr-blocks: # this is used for an special sg which allow full access to all the ports
+            <<: *default-eks-public-access-cidrs
+          subnets:
+            - name: default
+              kind: public
+            - name: default
+              kind: private
+        addons:
+          <<: *default-eks-addons
+        helm-charts:
+          <<: *default-helm-charts
+        # FIXME: missing ec2 names while using managed node groups
+        # https://github.com/terraform-aws-modules/terraform-aws-eks/issues/2032  
+        # potential fix: use our own launch templates
+        node-groups:
+          public:
+            network:
+              subnet:
+                name: default
+                kind: public
+              availability-zones:
+                - b
+            desired-size: 1
+            min-size: 1
+            max-size: 3
+            block-device-mappings:
+              xvda:
+                volume-size: 40 # gbs
+                volume-type: gp3
+                encrypted: false
+                delete-on-termination: true
+            autoscaler-enabled: true
+            cluster-log-retention-period: 7
+            instance-types: # if multiple are specified, the eks-node-group will randomly pick one
+              - t3a.xlarge
+            exposed-ports:
+              <<: *default-exposed-ports
+            extra-iam-policies:
+              <<: *default-iam-policies
+          private:
+            network:
+              subnet:
+                name: default
+                kind: private
+              availability-zones:
+                - b
+            desired-size: 1
+            min-size: 1
+            max-size: 3
+            instance-types:
+              - t3a.medium
+              - t3a.xlarge
+      cluster-name-1:
+        alb-dns-aliases: *default-alb-dns-aliases
+        aws-auth-extra-roles: *default-aws-auth-extra-roles
+        k8s-version: 1.33
+        network:
+          vpc: example-com
+          subnet:
+            name: default
+            kind: private
+        addons:
+          <<: *default-eks-addons
+        helm-charts:
+          <<: *default-helm-charts
+        # FIXME: missing ec2 names while using managed node groups
+        # https://github.com/terraform-aws-modules/terraform-aws-eks/issues/2032  
+        # potential fix: use our own launch templates
+        node-groups:
+          workers:
+            desired-size: 1
+            min-size: 1
+            max-size: 10
+            ami-type: AL2023_x86_64_STANDARD
+            instance-types:
+              - t3a.medium
+            autoscaler-enabled: false
+        
+network:
+  default_region: "eu-west-1"
+  # NOTE: vpc names will be prefixed with env_short
+  default_vpc: "example-com"
+  route53:
+    zones:
+      default:
+        tld: "example.com"
+  vpc:
+    vpc-module-source: "cloudposse/vpc/aws"
+    vpc-module-version: "2.1.1"
+    subnet-module-source: "cloudposse/dynamic-subnets/aws"
+    subnet-module-version: "2.4.2"
+    regions:
+      eu-west-1:
+        example-com:
+          ipv4-cidr: 172.1.0.0/16
+          subnets:
+            default:
+              ipv4-cidr: 172.1.0.0/18
+              private_subnets_enabled: true
+              public_subnets_enabled: true
+              igw: true
+              ngw: true
+              availability-zones:
+              - eu-west-1a
+              - eu-west-1b
+              - eu-west-1c
