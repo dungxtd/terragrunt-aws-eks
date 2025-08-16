@@ -11,7 +11,7 @@ generate "aws-provider" {
   contents = <<EOF
 provider "aws" {
   profile = "${ chomp(get_env("AWS_PROFILE", "default")) }"
-  region  = "${ chomp(try(local.config.general.region, "eu-west-1")) }"
+  region  = "${ chomp(try(local.config.general.region, "ap-southeast-1")) }"
   #alias   = "terragrunt"
   default_tags {
     tags = {
@@ -73,7 +73,7 @@ remote_state {
   }
   config = {
     bucket         = "${local.config.general.env-short}-${local.config.general.project}-tfstate"
-    region         = "${ chomp(try(local.config.general.region, "eu-west-1")) }"
+    region         = "${ chomp(try(local.config.general.region, "ap-southeast-1")) }"
     encrypt        = true
     key            = "${ get_env("ENVIRONMENT_NAME", "development") }/${basename(get_terragrunt_dir())}/terraform.tfstate"
     dynamodb_table = "${local.config.general.env-short}-${local.config.general.project}-tfstate"

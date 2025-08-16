@@ -79,7 +79,7 @@ resource "aws_route53_record" "eks_${eks_region_k}_${eks_name}_${ replace("${hos
 
 %{ for eks_name in local.unique_eks_names ~}
 
-    %{ for region in try(local.config.general.regions, ["eu-west-1"]) ~}
+    %{ for region in try(local.config.general.regions, ["ap-southeast-1"]) ~}
 
 resource "aws_route53_record" "rr_global_${region}_${eks_name}" {
   zone_id = data.aws_route53_zone.service_zone.zone_id
@@ -104,7 +104,7 @@ resource "aws_route53_record" "rr_global_${region}_${eks_name}" {
 
   %{ for hostname in try(local.config.alb-dns-aliases, [] ) ~}
 
-    %{ for region in try(local.config.general.regions, ["eu-west-1"]) ~}
+    %{ for region in try(local.config.general.regions, ["ap-southeast-1"]) ~}
 
 resource "aws_route53_record" "rr_global_eks_${region}_${eks_name}_${ replace("${hostname}", ".", "_")}" {
   zone_id = data.aws_route53_zone.service_zone.zone_id

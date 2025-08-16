@@ -91,7 +91,7 @@ rm -f tg-modules/*/terraform.tfvars.json tg-modules/*/terragrunt-debug.tfvars.js
 ## Get kubeconfig for specific cluster
 
 ```
-export AWS_REGION=eu-west-1
+export AWS_REGION=ap-southeast-1
 aws eks list-clusters --region ${AWS_REGION}
 # set cluster name from list above
 export CLUSTER_NAME=dev-example-com-cluster
