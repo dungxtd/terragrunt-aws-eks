@@ -26,11 +26,16 @@ default-access-entries: &default-access-entries
         access-scope: "cluster"
 
 default-exposed-ports: &default-exposed-ports
-  traefik-nodeport:
-    number: 30443
+  srs-http-nodeport:
+    number: 30080
     protocol: tcp
     cidr-filters:
-      - 0.0.0.0/0
+      - 0.0.0.0/0  # Allow HTTP access from anywhere for ALB
+  srs-rtmp-nodeport:
+    number: 31935
+    protocol: tcp
+    cidr-filters:
+      - 0.0.0.0/0  # Allow RTMP access from anywhere for external streaming clients
 
 default-eks-public-access-cidrs: &default-eks-public-access-cidrs
   basti0n: 127.0.0.0/32
@@ -171,6 +176,8 @@ eks:
             instance-types:
               - t3.small
             autoscaler-enabled: false
+            exposed-ports:
+              <<: *default-exposed-ports
 network:
   default_region: "ap-southeast-1"
   # NOTE: vpc names will be prefixed with env_short

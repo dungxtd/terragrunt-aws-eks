@@ -5,7 +5,6 @@ dependencies {
     "../../tg-modules//eks-helm-bootstrap",
     "../../tg-modules//eks-lb",
     "../../tg-modules//kms",
-    "../../tg-modules//route53"
   ]
 }
 
