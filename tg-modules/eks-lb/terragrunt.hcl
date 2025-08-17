@@ -32,14 +32,18 @@ dependency "vpc" {
   skip_outputs = false
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
   mock_outputs = {
-    vpcs = {
-      "vpc_eu-west-1_${local.config.network.default_vpc}":      { "vpc_info": { "vpc_id": "a1b2c3" }, "subnets_info": { "subnet_eu-west-1_${local.config.network.default_vpc}_pub": { "public_subnet_ids": ["snid123"], "private_subnet_ids": ["snid123"] } } }
-      "vpc_ap-south-1_${local.config.network.default_vpc}":     { "vpc_info": { "vpc_id": "a1b2c3" }, "subnets_info": { "subnet_ap-south-1_${local.config.network.default_vpc}_pub": { "public_subnet_ids": ["snid123"], "private_subnet_ids": ["snid123"] } } }
-      "vpc_ap-southeast-1_${local.config.network.default_vpc}": { "vpc_info": { "vpc_id": "a1b2c3" }, "subnets_info": { "subnet_ap-southeast-1_${local.config.network.default_vpc}_pub": { "public_subnet_ids": ["snid123"], "private_subnet_ids": ["snid123"] } } }
-      "vpc_eu-central-1_${local.config.network.default_vpc}":   { "vpc_info": { "vpc_id": "a1b2c3" }, "subnets_info": { "subnet_eu-central-1_${local.config.network.default_vpc}_pub": { "public_subnet_ids": ["snid123"], "private_subnet_ids": ["snid123"] } } }
-      "vpc_us-east-1_${local.config.network.default_vpc}":      { "vpc_info": { "vpc_id": "a1b2c3" }, "subnets_info": { "subnet_us-east-1_${local.config.network.default_vpc}_pub": { "public_subnet_ids": ["snid123"], "private_subnet_ids": ["snid123"] } } }
-      "vpc_us-east-2_${local.config.network.default_vpc}":      { "vpc_info": { "vpc_id": "a1b2c3" }, "subnets_info": { "subnet_us-east-2_${local.config.network.default_vpc}_pub": { "public_subnet_ids": ["snid123"], "private_subnet_ids": ["snid123"] } } }
-    }
+    vpcs = merge([
+      for vpc_region_k, vpc_region_v in try(local.config.network.vpc.regions, {}) : {
+        for vpc_name, vpc_values in vpc_region_v :
+          "vpc_${vpc_region_k}_${vpc_name}" => {
+            "vpc_info": { "vpc_id": "a1b2c3" },
+            "subnets_info": merge([
+              for sn_name, sn_values in vpc_values.subnets :
+                { "subnet_${vpc_region_k}_${vpc_name}_${sn_name}" = { "public_subnet_ids": ["snid123"], "private_subnet_ids": ["snid123"] } }
+            ]...)
+          }
+      }
+    ]...)
   }
 }
 
