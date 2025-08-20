@@ -22,41 +22,53 @@ resource "aws_lb" "main" {
   }, var.tags)
 }
 
-# ALB Target Group and Autoscaling Attachment
+# Dynamic ALB Autoscaling Attachments
 resource "aws_autoscaling_attachment" "asg_attachment_alb" {
-  for_each = var.load_balancer_type == "application" ? var.autoscale_group_names : toset([])
+  for_each = var.load_balancer_type == "application" ? {
+    for combo in setproduct(keys(var.alb_listeners), var.autoscale_group_names) :
+    "${combo[0]}-${combo[1]}" => {
+      target_group_key = combo[0]
+      asg_name        = combo[1]
+    }
+  } : {}
 
-  autoscaling_group_name = each.value
-  lb_target_group_arn    = aws_lb_target_group.alb_main[0].arn
+  autoscaling_group_name = each.value.asg_name
+  lb_target_group_arn    = aws_lb_target_group.alb_target_groups[each.value.target_group_key].arn
 }
 
-# NLB Target Group and Autoscaling Attachment for RTMP
-resource "aws_autoscaling_attachment" "asg_attachment_nlb_rtmp" {
-  for_each = var.load_balancer_type == "network" && var.enable_rtmp ? var.autoscale_group_names : toset([])
+# Dynamic NLB Autoscaling Attachments
+resource "aws_autoscaling_attachment" "asg_attachment_nlb" {
+  for_each = var.load_balancer_type == "network" ? {
+    for combo in setproduct(keys(var.nlb_target_groups), var.autoscale_group_names) :
+    "${combo[0]}-${combo[1]}" => {
+      target_group_key = combo[0]
+      asg_name        = combo[1]
+    }
+  } : {}
 
-  autoscaling_group_name = each.value
-  lb_target_group_arn    = aws_lb_target_group.nlb_rtmp[0].arn
+  autoscaling_group_name = each.value.asg_name
+  lb_target_group_arn    = aws_lb_target_group.nlb_target_groups[each.value.target_group_key].arn
 }
 
-# ALB Target Group
-resource "aws_lb_target_group" "alb_main" {
-  count = var.load_balancer_type == "application" ? 1 : 0
+# Dynamic ALB Target Groups
+resource "aws_lb_target_group" "alb_target_groups" {
+  for_each = var.load_balancer_type == "application" ? var.alb_listeners : {}
 
   name_prefix = local.lb_name_prefix
-  port        = var.node_port
-  protocol    = var.node_port_protocol
+  port        = each.value.target_port
+  protocol    = each.value.target_protocol
   target_type = var.target_type
   vpc_id      = var.vpcid
 
   health_check {
-    port                = var.health_check_port_alb
-    protocol            = var.health_check_protocol_alb
+    port                = each.value.health_check.port
+    protocol            = each.value.health_check.protocol
     interval            = 30
     healthy_threshold   = 3
     unhealthy_threshold = 3
     timeout             = 6
-    path                = var.health_check_path
-    matcher             = var.health_check_matcher
+    path                = each.value.health_check.path
+    matcher             = each.value.health_check.matcher
   }
 
   stickiness {
@@ -70,26 +82,26 @@ resource "aws_lb_target_group" "alb_main" {
   }
 
   tags = {
-    Name = "${var.cluster_name}-alb"
+    Name = "${var.cluster_name}-alb-${each.key}"
   }
 }
 
-# NLB Target Group for RTMP
-resource "aws_lb_target_group" "nlb_rtmp" {
-  count = var.load_balancer_type == "network" && var.enable_rtmp ? 1 : 0
+# Dynamic Target Groups for NLB based on configuration
+resource "aws_lb_target_group" "nlb_target_groups" {
+  for_each = var.load_balancer_type == "network" ? var.nlb_target_groups : {}
 
   name_prefix = local.lb_name_prefix
-  port        = var.rtmp_node_port  # Target the NodePort, not the service port
-  protocol    = "TCP"
+  port        = each.value.target_port
+  protocol    = each.value.target_protocol
   target_type = var.target_type
   vpc_id      = var.vpcid
 
   health_check {
-    port                = "traffic-port"
-    protocol            = "TCP"
-    interval            = var.health_check_interval_nlb
-    healthy_threshold   = var.healthy_threshold_nlb
-    unhealthy_threshold = var.unhealthy_threshold_nlb
+    port                = each.value.health_check.port
+    protocol            = each.value.health_check.protocol
+    interval            = try(each.value.health_check.interval, var.health_check_interval_nlb)
+    healthy_threshold   = try(each.value.health_check.healthy_threshold, var.healthy_threshold_nlb)
+    unhealthy_threshold = try(each.value.health_check.unhealthy_threshold, var.unhealthy_threshold_nlb)
   }
 
   lifecycle {
@@ -97,67 +109,36 @@ resource "aws_lb_target_group" "nlb_rtmp" {
   }
 
   tags = {
-    Name = "${var.cluster_name}-nlb-rtmp"
+    Name = "${var.cluster_name}-nlb-${each.key}"
   }
 }
 
-# ALB Listeners
-resource "aws_lb_listener" "alb_http_forward" {
-  count = var.load_balancer_type == "application" && var.enable_http && var.http_redirect == false ? 1 : 0
+# Dynamic ALB Listeners
+resource "aws_lb_listener" "alb_listeners" {
+  for_each = var.load_balancer_type == "application" ? var.alb_listeners : {}
 
   load_balancer_arn = aws_lb.main.arn
-  port              = var.http_port
-  protocol          = "HTTP"
+  port              = each.value.listener_port
+  protocol          = each.value.listener_protocol
+  ssl_policy        = each.value.listener_protocol == "HTTPS" ? var.ssl_policy : null
+  certificate_arn   = each.value.listener_protocol == "HTTPS" ? var.certificate_arn : null
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.alb_main[0].arn
+    target_group_arn = aws_lb_target_group.alb_target_groups[each.key].arn
   }
 }
 
-resource "aws_lb_listener" "alb_http_redirect" {
-  count = var.load_balancer_type == "application" && var.enable_https && var.http_redirect ? 1 : 0
+# Dynamic NLB Listeners
+resource "aws_lb_listener" "nlb_listeners" {
+  for_each = var.load_balancer_type == "network" ? var.nlb_target_groups : {}
 
   load_balancer_arn = aws_lb.main.arn
-  port              = var.http_port
-  protocol          = "HTTP"
-
-  default_action {
-    type = "redirect"
-
-    redirect {
-      port        = var.https_port
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-    }
-  }
-}
-
-resource "aws_lb_listener" "alb_https" {
-  count = var.load_balancer_type == "application" && var.enable_https ? 1 : 0
-
-  load_balancer_arn = aws_lb.main.arn
-  port              = var.https_port
-  protocol          = "HTTPS"
-  ssl_policy        = var.ssl_policy
-  certificate_arn   = var.certificate_arn
+  port              = each.value.listener_port
+  protocol          = each.value.listener_protocol
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.alb_main[0].arn
-  }
-}
-
-# NLB Listeners
-resource "aws_lb_listener" "nlb_rtmp" {
-  count = var.load_balancer_type == "network" && var.enable_rtmp ? 1 : 0
-
-  load_balancer_arn = aws_lb.main.arn
-  port              = var.rtmp_port
-  protocol          = "TCP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.nlb_rtmp[0].arn
+    target_group_arn = aws_lb_target_group.nlb_target_groups[each.key].arn
   }
 }

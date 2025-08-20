@@ -54,6 +54,8 @@ inputs = {
   eks_node_groups_sg_json = dependency.eks.outputs.eks_node_groups_sg
   vpcs_json = dependency.vpc.outputs.vpcs
 
+
+
 }
 
 generate "dynamic-lb-modules" {
@@ -159,25 +161,42 @@ module "lb_${eks_region_k}_${eks_name}_${deployment_type}" {
   tags                      = {}
   internal                  = false
 
-  # ALB specific settings - targeting NodePort 30080 for HTTP traffic
-  node_port                 = "${deployment_type}" == "alb" ? 30080 : 30080
-  node_port_protocol        = "${deployment_type}" == "alb" ? "HTTP" : "HTTP"
-  enable_http               = "${deployment_type}" == "alb" ? true : false
-  enable_https              = "${deployment_type}" == "alb" ? false : false
-  http_redirect             = "${deployment_type}" == "alb" ? false : false
-  certificate_arn           = ""
+  # Dynamic configuration based on deployment type
+  alb_listeners = "${deployment_type}" == "alb" ? {
+    "default" = {
+      listener_port     = ${try(eks_values.load-balancer-config.alb.listener-port, 80)}
+      listener_protocol = "${try(eks_values.load-balancer-config.alb.listener-protocol, "HTTP")}"
+      target_port       = ${try(eks_values.load-balancer-config.alb.target-port, 30080)}
+      target_protocol   = "${try(eks_values.load-balancer-config.alb.target-protocol, "HTTP")}"
+      health_check = {
+        path     = "${try(eks_values.load-balancer-config.alb.health-check.path, "/")}"
+        port     = ${try(eks_values.load-balancer-config.alb.health-check.port, 30080)}
+        protocol = "${try(eks_values.load-balancer-config.alb.health-check.protocol, "HTTP")}"
+        matcher  = "${try(eks_values.load-balancer-config.alb.health-check.matcher, "200-499")}"
+      }
+    }
+  } : {}
 
-  # NLB specific settings - targeting NodePort 31935 for RTMP traffic
-  enable_rtmp               = "${deployment_type}" == "nlb" ? true : false
-  rtmp_port                 = 1935      # NLB listener port
-  rtmp_node_port            = 31935     # NodePort target for RTMP
-  enable_cross_zone_load_balancing = "${deployment_type}" == "nlb" ? true : false
+  nlb_target_groups = "${deployment_type}" == "nlb" ? {
+    "default" = {
+      listener_port     = ${try(eks_values.load-balancer-config.nlb.listener-port, 1935)}
+      listener_protocol = "${try(eks_values.load-balancer-config.nlb.listener-protocol, "TCP")}"
+      target_port       = ${try(eks_values.load-balancer-config.nlb.target-port, 31935)}
+      target_protocol   = "${try(eks_values.load-balancer-config.nlb.target-protocol, "TCP")}"
+      health_check = {
+        port                = ${try(eks_values.load-balancer-config.nlb.health-check.port, 31935)}
+        protocol            = "${try(eks_values.load-balancer-config.nlb.health-check.protocol, "TCP")}"
+        interval            = ${try(eks_values.load-balancer-config.nlb.health-check.interval, 30)}
+        healthy_threshold   = ${try(eks_values.load-balancer-config.nlb.health-check.healthy_threshold, 3)}
+        unhealthy_threshold = ${try(eks_values.load-balancer-config.nlb.health-check.unhealthy_threshold, 3)}
+      }
+    }
+  } : {}
 
-  # Health check configurations
-  health_check_path         = "/"
-  health_check_port_alb     = 30080     # Health check on NodePort
-  health_check_protocol_alb = "HTTP"
-  health_check_matcher      = "200-499"
+  # Cross zone load balancing for NLB
+  enable_cross_zone_load_balancing = "${deployment_type}" == "nlb" ? ${try(eks_values.cross_zone_load_balancing, true)} : false
+
+
 
 }
 

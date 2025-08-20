@@ -144,47 +144,66 @@ variable "enable_cross_zone_load_balancing" {
   description = "Enable cross zone load balancing for NLB"
 }
 
-variable "rtmp_port" {
-  default     = 1935
-  type        = number
-  description = "RTMP port for SRS streaming (NLB only)"
+# Dynamic configuration for ALB listeners
+variable "alb_listeners" {
+  type = map(object({
+    listener_port     = number
+    listener_protocol = string
+    target_port       = number
+    target_protocol   = string
+    health_check = object({
+      path     = string
+      port     = number
+      protocol = string
+      matcher  = string
+    })
+  }))
+  default     = {}
+  description = "Dynamic ALB listener configuration"
 }
 
-variable "rtmp_node_port" {
-  default     = 31935
-  type        = number
-  description = "NodePort for RTMP service (NLB target)"
+# Dynamic configuration for NLB target groups
+variable "nlb_target_groups" {
+  type = map(object({
+    listener_port     = number
+    listener_protocol = string
+    target_port       = number
+    target_protocol   = string
+    health_check = object({
+      port                = number
+      protocol            = string
+      interval            = optional(number)
+      healthy_threshold   = optional(number)
+      unhealthy_threshold = optional(number)
+    })
+  }))
+  default     = {}
+  description = "Dynamic NLB target group configuration"
 }
 
-# Health check variables
+# Legacy health check variables (kept for backward compatibility)
 variable "health_check_path" {
   default     = "/"
   type        = string
-  description = "Health check path for ALB"
+  description = "Health check path for ALB (legacy - use alb_listeners instead)"
 }
 
 variable "health_check_port_alb" {
   default     = 30080
   type        = number
-  description = "Health check port for ALB"
+  description = "Health check port for ALB (legacy - use alb_listeners instead)"
 }
 
 variable "health_check_protocol_alb" {
   default     = "HTTP"
   type        = string
-  description = "Health check protocol for ALB"
+  description = "Health check protocol for ALB (legacy - use alb_listeners instead)"
 }
 
 variable "health_check_matcher" {
   default     = "200-499"
   type        = string
-  description = "Health check matcher for ALB"
-}
-
-variable "enable_rtmp" {
-  type        = bool
-  default     = false
-  description = "Enable RTMP port listener for NLB"
+  description = "Health check matcher for ALB (legacy - use alb_listeners instead)"
 }
 
 variable "health_check_interval_nlb" {
