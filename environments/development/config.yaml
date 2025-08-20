@@ -93,8 +93,18 @@ default-helm-charts: &default-helm-charts
             protocol: UDP
 
 default-eks-addons: &default-eks-addons
+  # Order matters: vpc-cni → kube-proxy → coredns → ebs-csi-driver
+  vpc-cni:
+    addon-version: v1.19.0-eksbuild.1
+    resolve-conflicts: "OVERWRITE"
+  kube-proxy:
+    addon-version: v1.33.0-eksbuild.1
+    resolve-conflicts: "OVERWRITE"
   coredns:
     addon-version: v1.12.2-eksbuild.4
+    resolve-conflicts: "OVERWRITE"
+  aws-ebs-csi-driver:
+    addon-version: v1.37.0-eksbuild.1
     resolve-conflicts: "OVERWRITE"
 
 alb-dns-aliases: &default-alb-dns-aliases

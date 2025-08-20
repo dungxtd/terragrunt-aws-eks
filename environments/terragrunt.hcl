@@ -1,10 +1,15 @@
+# CORRECT DEPENDENCY ORDER for all environments
+# Creation: VPC → EKS cluster → node groups → EKS addons → load balancers → workloads
+# Destroy: workloads → load balancers → EKS addons → node groups → EKS cluster → VPC
 dependencies {
   paths = [
     "../../tg-modules//tfstate",
+    "../../tg-modules//vpc",
     "../../tg-modules//eks",
-    "../../tg-modules//eks-helm-bootstrap",
+    "../../tg-modules//eks-addons",
     "../../tg-modules//eks-lb",
-    "../../tg-modules//kms",
+    "../../tg-modules//eks-helm-bootstrap",
+    "../../tg-modules//kms"
   ]
 }
 

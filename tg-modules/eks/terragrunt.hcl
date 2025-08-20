@@ -133,19 +133,8 @@ module "eks_cluster_${eks_region_k}_${eks_name}" {
   )
   %{ endif ~}
 
-  addons = [ 
-    %{ if try(eks_values.addons, "") != "" }
-      %{ for addon_name, addon_v in eks_values.addons ~}
-     {
-        addon_name =  "${addon_name}",
-        addon_version = "${addon_v.addon-version}",
-        %{ if try(addon_v.resolve-conflicts, "") != "" } resolve_conflicts = "${addon_v.resolve-conflicts}", %{ else } resolve_conflicts = "PRESERVE", %{ endif ~}
-        %{ if try(addon_v.service-account-role-arn, "") != "" } service_account_role_arn = "${addon_v.service-account-role-arn}", %{ else } service_account_role_arn = null %{ endif ~}
-     },
-      %{ endfor ~}
-    %{ endif ~}
-
-  ]
+  # Disable addons in cluster module - we'll manage them separately with proper ordering
+  addons = []
 
   access_entry_map = {
   %{ for rolename in try(eks_values.aws-auth-extra-roles, [] ) ~}
@@ -172,9 +161,16 @@ module "eks_cluster_${eks_region_k}_${eks_name}" {
 
 }
 
+# Note: EKS managed add-ons are now handled in separate eks-addons module
+# This ensures proper dependency order: cluster → nodes → addons
+
 resource "aws_iam_role_policy_attachment" "alb_policy_${eks_region_k}_${eks_name}" {
   policy_arn = aws_iam_policy.aws_alb_policy.arn
   role       = split("/", module.eks_cluster_${eks_region_k}_${eks_name}.eks_cluster_role_arn)[1]
+
+  depends_on = [
+    module.eks_cluster_${eks_region_k}_${eks_name}
+  ]
 }
 
     %{ for eng_name, eng_values in eks_values.node-groups ~} 
@@ -277,9 +273,14 @@ module "eks_node_group_${eks_region_k}_${eks_name}_${eng_name}" {
   associated_security_group_ids      = [ %{ if try(eng_values.exposed-ports, "") != "" } module.eks_node_group_sg_${eks_region_k}_${eks_name}_${eng_name}.id %{ endif ~} ]
 
   # Enable the Kubernetes cluster auto-scaler to find the auto-scaling group
-  cluster_autoscaler_enabled = ${ chomp(try("${eng_values.autoscaler-enabled}", false) ) } 
+  cluster_autoscaler_enabled = ${ chomp(try("${eng_values.autoscaler-enabled}", false) ) }
 
   create_before_destroy = true
+
+  # Node groups depend only on cluster, NOT on addons
+  depends_on = [
+    module.eks_cluster_${eks_region_k}_${eks_name}
+  ]
 
   %{ if try(eng_values.block-device-mappings, "") != "" }
   block_device_mappings = [

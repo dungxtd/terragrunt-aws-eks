@@ -11,8 +11,9 @@ include "tf_main_config" {
 
 dependencies {
   paths = [
+    "../../tg-modules//vpc",
     "../../tg-modules//eks",
-    "../../tg-modules//vpc"
+    "../../tg-modules//eks-addons"
   ]
 }
 
