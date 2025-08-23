@@ -79,7 +79,7 @@ variable "https_port" {
 
 variable "enable_http" {
   type    = bool
-  default = false
+  default = true
 }
 
 variable "enable_https" {
