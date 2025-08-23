@@ -144,16 +144,6 @@ resource "kubernetes_annotations" "${eks_region_k}_${eks_name}_gp2_disable_defau
 
     %{ for chart_k, chart_v in eks_values.helm-charts ~}
 
-data "template_file" "${eks_region_k}_${eks_name}_${chart_k}" {
-  template = <<EOT
-      %{if try(chart_v.valuesYAMLTemplate, "") != "" ~}
-${indent(0, yamlencode(chart_v.valuesYAMLTemplate))}
-      %{ endif ~}
-EOT
-  vars = {
-    clusterName = jsondecode(var.eks_clusters_json).eks_cluster_${eks_region_k}_${eks_name}.eks_info.eks_cluster_id
-  }
-}
 
 resource "helm_release" "${eks_region_k}_${eks_name}_${chart_k}" {
   provider   = helm.${eks_region_k}_${eks_name}
@@ -174,7 +164,10 @@ resource "helm_release" "${eks_region_k}_${eks_name}_${chart_k}" {
     %{ endfor ~}
   %{ endif ~}
 
-  values = [trimspace(data.template_file.${eks_region_k}_${eks_name}_${chart_k}.rendered)]
+  values = [<<EOT
+${yamlencode(chart_v.valuesYAMLTemplate)}
+EOT
+]
 
 }
 
