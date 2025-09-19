@@ -42,8 +42,8 @@ default-eks-public-access-cidrs: &default-eks-public-access-cidrs
 
 default-helm-charts: &default-helm-charts
   oryx:
-    repository: https://github.com/dungxtd/srs-helm.git
-    chart: oryx
+    repository: "git+https://github.com/dungxtd/srs-helm.git@main?path=oryx"
+    version: ""
     namespace: oryx
     valuesYAMLTemplate:
       # Oryx configuration - Enhanced SRS with additional features
