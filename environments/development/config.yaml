@@ -4,10 +4,10 @@
 # - nlb: Network Load Balancer for TCP/UDP traffic (Layer 4)
 # - route53: DNS routing (existing)
 #
-# For SRS (Simple Realtime Server):
+# For Oryx (Enhanced SRS - Simple Realtime Server):
 # - ALB handles HTTP-FLV web UI on port 8080
 # - NLB handles RTMP push traffic on port 1935
-# - Both can be deployed together for complete SRS functionality
+# - Both can be deployed together for complete Oryx functionality
 
 general:
   project: "terragrunt-aws"
@@ -26,12 +26,12 @@ default-access-entries: &default-access-entries
         access-scope: "cluster"
 
 default-exposed-ports: &default-exposed-ports
-  srs-http-nodeport:
+  oryx-http-nodeport:
     number: 30080
     protocol: tcp
     cidr-filters:
       - 0.0.0.0/0  # Allow HTTP access from anywhere for ALB
-  srs-rtmp-nodeport:
+  oryx-rtmp-nodeport:
     number: 31935
     protocol: tcp
     cidr-filters:
@@ -41,13 +41,17 @@ default-eks-public-access-cidrs: &default-eks-public-access-cidrs
   basti0n: 127.0.0.0/32
 
 default-helm-charts: &default-helm-charts
-  srs-server:
-    repository: http://helm.ossrs.io/stable
-    version: latest
-    namespace: srs
+  oryx:
+    repository: https://github.com/dungxtd/srs-helm.git
+    chart: oryx
+    namespace: oryx
     valuesYAMLTemplate:
-      # SRS configuration
+      # Oryx configuration - Enhanced SRS with additional features
       candidate: "auto"
+      # Use default /data persistence path for Oryx
+      persistence:
+        enabled: true
+        path: "/data"
       conf:
         SRS_LOG_TANK: "console"
         SRS_HTTP_SERVER_ENABLED: "on"
@@ -62,6 +66,9 @@ default-helm-charts: &default-helm-charts
         SRS_VHOST_RTC_ENABLED: "on"
         SRS_VHOST_RTC_RTMP_TO_RTC: "on"
         SRS_VHOST_RTC_RTC_TO_RTMP: "on"
+        # Enhanced Oryx features
+        SRS_VHOST_HTTP_HOOKS_ENABLED: "on"
+        SRS_VHOST_DVR_ENABLED: "on"
       # Service configuration - use NodePort to work with ALB/NLB infrastructure
       service:
         type: NodePort     # Use NodePort to work with our ALB/NLB infrastructure
@@ -100,7 +107,7 @@ default-eks-addons: &default-eks-addons
 alb-dns-aliases: &default-alb-dns-aliases
   - api
   - auth-api
-  - srs-web  # For SRS HTTP-FLV web UI
+  - oryx-web  # For Oryx HTTP-FLV web UI
 
 eks:
   cluster-module-source: cloudposse/eks-cluster/aws
@@ -119,8 +126,8 @@ eks:
           all: 0.0.0.0/0
         # Multiple deployment types: ALB for HTTP-FLV (port 8080), NLB for RTMP (port 1935)
         deployment-types:
-          - alb   # For SRS HTTP-FLV web UI on port 8080
-          - nlb   # For SRS RTMP push on port 1935
+          - alb   # For Oryx HTTP-FLV web UI on port 8080
+          - nlb   # For Oryx RTMP push on port 1935
         # HTTP-only ALB (no SSL certificates, no Route53 required)
         alb-http-only: true
 
