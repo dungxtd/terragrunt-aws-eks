@@ -42,7 +42,7 @@ default-eks-public-access-cidrs: &default-eks-public-access-cidrs
 
 default-helm-charts: &default-helm-charts
   oryx:
-    repository: http://helm.ossrs.io/stable
+    repository: https://github.com/dungxtd/srs-helm.git
     chart: oryx
     version: v1.0.7
     namespace: oryx
@@ -73,11 +73,21 @@ default-helm-charts: &default-helm-charts
       # Service configuration - use NodePort to work with ALB/NLB infrastructure
       service:
         type: NodePort     # Use NodePort to work with our ALB/NLB infrastructure
-        rtmp: 31935        # RTMP push port (will be exposed via NLB)
-        http: 30080        # HTTP-FLV web UI port (will be exposed via ALB)
-        https: 30443       # HTTPS port
-        srt: 32080         # SRT port
-        rtc: 32000         # WebRTC port
+        rtmp: 
+          port: 31935      # Service port for RTMP
+          nodePort: 31935  # Explicit NodePort for NLB targeting
+        http: 
+          port: 30080      # Service port for HTTP
+          nodePort: 30080  # Explicit NodePort for ALB targeting
+        https: 
+          port: 30443      # Service port for HTTPS
+          nodePort: 30443  # Explicit NodePort
+        srt: 
+          port: 32080      # Service port for SRT
+          nodePort: 32080  # Explicit NodePort
+        rtc: 
+          port: 32000      # Service port for WebRTC
+          nodePort: 32000  # Explicit NodePort
 
 default-eks-addons: &default-eks-addons
   coredns:
