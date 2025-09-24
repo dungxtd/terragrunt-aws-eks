@@ -87,7 +87,7 @@ locals {
 
   %{ for eks_name, eks_values in eks_region_v ~}
 
-    %{ if !try(eks_values.alb-http-only, false) }
+    %{ if try(eks_values.use-route53, false) }
 
 module "acm_request_certificate_${eks_region_k}_${eks_name}" {
 
@@ -178,6 +178,26 @@ module "lb_${eks_region_k}_${eks_name}_${deployment_type}" {
   } : {}
 
   nlb_target_groups = "${deployment_type}" == "nlb" ? {
+    %{ if try(eks_values.load-balancer-config.nlb.listeners, null) != null ~}
+      %{ for listener_name, listener_config in eks_values.load-balancer-config.nlb.listeners ~}
+    "${listener_name}" = {
+      listener_port     = ${listener_config.listener-port}
+      listener_protocol = "${listener_config.listener-protocol}"
+      target_port       = ${listener_config.target-port}
+      target_protocol   = "${listener_config.target-protocol}"
+      health_check = {
+        port                = ${listener_config.health-check.port}
+        protocol            = "${listener_config.health-check.protocol}"
+        interval            = ${try(listener_config.health-check.interval, 30)}
+        healthy_threshold   = ${try(listener_config.health-check.healthy_threshold, 3)}
+        unhealthy_threshold = ${try(listener_config.health-check.unhealthy_threshold, 3)}
+        %{ if try(listener_config.health-check.path, null) != null ~}
+        path                = "${listener_config.health-check.path}"
+        %{ endif ~}
+      }
+    }
+      %{ endfor ~}
+    %{ else ~}
     "default" = {
       listener_port     = ${try(eks_values.load-balancer-config.nlb.listener-port, 1935)}
       listener_protocol = "${try(eks_values.load-balancer-config.nlb.listener-protocol, "TCP")}"
@@ -191,6 +211,7 @@ module "lb_${eks_region_k}_${eks_name}_${deployment_type}" {
         unhealthy_threshold = ${try(eks_values.load-balancer-config.nlb.health-check.unhealthy_threshold, 3)}
       }
     }
+    %{ endif ~}
   } : {}
 
   # Cross zone load balancing for NLB

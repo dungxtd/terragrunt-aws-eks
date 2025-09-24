@@ -1,13 +1,11 @@
 # Terragrunt AWS EKS Configuration
-# This configuration supports multiple deployment types for load balancers:
-# - alb: Application Load Balancer for HTTP/HTTPS traffic (Layer 7)
-# - nlb: Network Load Balancer for TCP/UDP traffic (Layer 4)
-# - route53: DNS routing (existing)
+# This configuration uses a single Network Load Balancer (NLB) for both protocols:
+# - NLB handles HTTP web UI on port 80 → NodePort 30080 
+# - NLB handles RTMP push traffic on port 1935 → NodePort 31935
 #
 # For Oryx (Enhanced SRS - Simple Realtime Server):
-# - ALB handles HTTP-FLV web UI on port 8080
-# - NLB handles RTMP push traffic on port 1935
-# - Both can be deployed together for complete Oryx functionality
+# - Single NLB handles both HTTP-FLV web UI and RTMP push traffic
+# - Unified load balancer configuration for complete Oryx functionality
 
 general:
   project: "terragrunt-aws"
@@ -114,35 +112,38 @@ eks:
         endpoint-public-access: true
         public-access-cidrs:
           all: 0.0.0.0/0
-        # Multiple deployment types: ALB for HTTP-FLV (port 8080), NLB for RTMP (port 1935)
+        # Single deployment type: NLB for both HTTP (port 80) and RTMP (port 1935)
         deployment-types:
-          - alb   # For Oryx HTTP-FLV web UI on port 8080
-          - nlb   # For Oryx RTMP push on port 1935
-        # HTTP-only ALB (no SSL certificates, no Route53 required)
-        alb-http-only: true
+          - nlb   # Single NLB handles both HTTP UI and RTMP traffic
+        
+        # DNS and certificate configuration
+        use-route53: false          # Set to true to enable Route53 DNS and SSL certificates
+        alb-http-only: true         # Use HTTP-only (no SSL) - works with load balancer DNS
 
-        # Load Balancer specific configurations
+        # Load Balancer configuration for unified NLB
         load-balancer-config:
-          alb:
-            # ALB targets NodePort for HTTP traffic
-            target-port: 30080        # NodePort for HTTP service
-            target-protocol: "HTTP"
-            listener-port: 80         # ALB listens on port 80
-            listener-protocol: "HTTP"
-            health-check:
-              path: "/"
-              port: 30080
-              protocol: "HTTP"
-              matcher: "200-499"
           nlb:
-            # NLB targets NodePort for RTMP traffic
-            target-port: 31935        # NodePort for RTMP service
-            target-protocol: "TCP"
-            listener-port: 1935       # NLB listens on port 1935
-            listener-protocol: "TCP"
-            health-check:
-              port: 31935
-              protocol: "TCP"
+            # Multiple listeners on the same NLB
+            listeners:
+              http:
+                # HTTP UI traffic: port 80 → NodePort 30080
+                target-port: 30080        # NodePort for HTTP service
+                target-protocol: "TCP"    # NLB uses TCP even for HTTP
+                listener-port: 80         # NLB listens on port 80
+                listener-protocol: "TCP"
+                health-check:
+                  port: 30080
+                  protocol: "TCP"
+                  path: "/"               # Health check path for HTTP
+              rtmp:
+                # RTMP streaming traffic: port 1935 → NodePort 31935
+                target-port: 31935        # NodePort for RTMP service
+                target-protocol: "TCP"
+                listener-port: 1935       # NLB listens on port 1935
+                listener-protocol: "TCP"
+                health-check:
+                  port: 31935
+                  protocol: "TCP"
         network:
           vpc: terragrunt-aws
           subnets:
@@ -179,6 +180,7 @@ network:
   default_region: "ap-southeast-1"
   # NOTE: vpc names will be prefixed with env_short
   default_vpc: "terragrunt-aws"
+  # Route53 disabled - using load balancer DNS only
   vpc:
     vpc-module-source: "cloudposse/vpc/aws"
     vpc-module-version: "2.1.1"
