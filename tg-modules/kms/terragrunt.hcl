@@ -3,11 +3,14 @@ locals {
   ENVIRONMENT_NAME = get_env("ENVIRONMENT_NAME", "development")
   config           = yamldecode(file("../../environments/${get_env("ENVIRONMENT_NAME", "development")}/config.yaml"))
   default_outputs  = {}
+  eks_enabled      = try(local.config.eks.enabled, true)
 }
 
 include "tf_main_config" {
   path = find_in_parent_folders()
 }
+
+skip = !local.eks_enabled
 
 dependencies {
   paths = [

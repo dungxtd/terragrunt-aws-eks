@@ -12,7 +12,7 @@ dependencies {
 dependency "eks" {
   config_path                             = "../../tg-modules//eks"
   skip_outputs                            = false
-  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
+  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "apply", "destroy"]
   mock_outputs = {
     eks_clusters       = {}
     eks_node_groups    = {}
@@ -23,7 +23,7 @@ dependency "eks" {
 dependency "ecs" {
   config_path                             = "../../tg-modules//ecs"
   skip_outputs                            = false
-  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
+  mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "apply", "destroy"]
   mock_outputs = {
     ecs_clusters       = {}
     ecs_services       = {}
