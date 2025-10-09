@@ -1,10 +1,10 @@
 # configure terragrunt behaviours with these
 locals {
   ENVIRONMENT_NAME = get_env("ENVIRONMENT_NAME", "development")
-  config = yamldecode(file("../../environments/${ get_env("ENVIRONMENT_NAME", "development") }/config.yaml"))
-  default_outputs = {}
+  config           = yamldecode(file("../../environments/${get_env("ENVIRONMENT_NAME", "development")}/config.yaml"))
+  default_outputs  = {}
   unique_eks_names = distinct(flatten([
-    for eks_region_k, eks_region_v in try(local.config.eks.regions, { } ) : [
+    for eks_region_k, eks_region_v in try(local.config.eks.regions, {}) : [
       for eks_name, eks_values in eks_region_v : [
         eks_name
       ]
@@ -23,15 +23,15 @@ dependencies {
 }
 
 dependency "eks-lb" {
-  config_path = "../../tg-modules//eks-lb"
-  skip_outputs = false
+  config_path                             = "../../tg-modules//eks-lb"
+  skip_outputs                            = false
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan"]
-  mock_outputs = { eks_albs = {}, eks_load_balancers = {} }
+  mock_outputs                            = { eks_albs = {}, eks_load_balancers = {} }
 }
 
 inputs = {
 
-  eks_alb_json = dependency.eks-lb.outputs.eks_albs
+  eks_alb_json     = dependency.eks-lb.outputs.eks_albs
   unique_eks_names = local.unique_eks_names
 
 }
@@ -42,14 +42,14 @@ generate "dynamic-network-modules" {
   contents  = <<EOF
 
 data "aws_route53_zone" "service_zone" {
-  name = "${ chomp(try(local.config.network.route53.zones.default.tld, "cluster.local")) }"
+  name = "${chomp(try(local.config.network.route53.zones.default.tld, "cluster.local"))}"
 }
 
 # per-region load balancer dns records
 
-%{ for eks_region_k, eks_region_v in try(local.config.eks.regions, { } ) ~}
+%{for eks_region_k, eks_region_v in try(local.config.eks.regions, {})~}
 
-  %{ for eks_name, eks_values in eks_region_v ~}
+  %{for eks_name, eks_values in eks_region_v~}
 
 resource "aws_route53_record" "eks_${eks_region_k}_${eks_name}" {
   zone_id = data.aws_route53_zone.service_zone.zone_id
@@ -59,9 +59,9 @@ resource "aws_route53_record" "eks_${eks_region_k}_${eks_name}" {
   records = [try(jsondecode(var.eks_alb_json).eks_alb_${eks_region_k}_${eks_name}.alb_info.dns_name, "known-after-apply")]
 }
 
-      %{ for hostname in try(eks_values.alb-dns-aliases, [] ) ~}
+      %{for hostname in try(eks_values.alb-dns-aliases, [])~}
 
-resource "aws_route53_record" "eks_${eks_region_k}_${eks_name}_${ replace("${hostname}", ".", "_")}" {
+resource "aws_route53_record" "eks_${eks_region_k}_${eks_name}_${replace("${hostname}", ".", "_")}" {
   zone_id = data.aws_route53_zone.service_zone.zone_id
   name    = "${hostname}.${local.config.general.env-short}.${eks_name}.${eks_region_k}.${local.config.network.route53.zones.default.tld}"
   type    = "CNAME"
@@ -69,17 +69,17 @@ resource "aws_route53_record" "eks_${eks_region_k}_${eks_name}_${ replace("${hos
   records = [aws_route53_record.eks_${eks_region_k}_${eks_name}.fqdn]
 }
 
-      %{ endfor ~}
+      %{endfor~}
 
-  %{ endfor ~}
+  %{endfor~}
 
-%{ endfor ~}
+%{endfor~}
 
 # multi-region load balancer dns records
 
-%{ for eks_name in local.unique_eks_names ~}
+%{for eks_name in local.unique_eks_names~}
 
-    %{ for region in try(local.config.general.regions, ["ap-southeast-1"]) ~}
+    %{for region in try(local.config.general.regions, ["ap-southeast-1"])~}
 
 resource "aws_route53_record" "rr_global_${region}_${eks_name}" {
   zone_id = data.aws_route53_zone.service_zone.zone_id
@@ -100,18 +100,18 @@ resource "aws_route53_record" "rr_global_${region}_${eks_name}" {
 
 }
 
-    %{ endfor ~}
+    %{endfor~}
 
-  %{ for hostname in try(local.config.alb-dns-aliases, [] ) ~}
+  %{for hostname in try(local.config.alb-dns-aliases, [])~}
 
-    %{ for region in try(local.config.general.regions, ["ap-southeast-1"]) ~}
+    %{for region in try(local.config.general.regions, ["ap-southeast-1"])~}
 
-resource "aws_route53_record" "rr_global_eks_${region}_${eks_name}_${ replace("${hostname}", ".", "_")}" {
+resource "aws_route53_record" "rr_global_eks_${region}_${eks_name}_${replace("${hostname}", ".", "_")}" {
   zone_id = data.aws_route53_zone.service_zone.zone_id
   name    = "${hostname}.${local.config.general.env-short}.${eks_name}.global.${local.config.network.route53.zones.default.tld}"
   type    = "A"
 
-  set_identifier = "eks_${region}_${eks_name}_${ replace("${hostname}", ".", "_")}"
+  set_identifier = "eks_${region}_${eks_name}_${replace("${hostname}", ".", "_")}"
 
   alias {
     name                   = try(jsondecode(var.eks_alb_json).eks_alb_${region}_${eks_name}.alb_info.dns_name, "")
@@ -124,11 +124,11 @@ resource "aws_route53_record" "rr_global_eks_${region}_${eks_name}_${ replace("$
   }
 
 }
-    %{ endfor ~}
+    %{endfor~}
 
-  %{ endfor ~}
+  %{endfor~}
 
-%{ endfor ~}
+%{endfor~}
 
 EOF
 }

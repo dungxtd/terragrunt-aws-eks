@@ -1,8 +1,8 @@
 # configure terragrunt behaviours with these
 locals {
   ENVIRONMENT_NAME = get_env("ENVIRONMENT_NAME", "development")
-  config = yamldecode(file("../../environments/${ get_env("ENVIRONMENT_NAME", "development") }/config.yaml"))
-  default_outputs = {}
+  config           = yamldecode(file("../../environments/${get_env("ENVIRONMENT_NAME", "development")}/config.yaml"))
+  default_outputs  = {}
 }
 
 include "tf_main_config" {
@@ -10,10 +10,10 @@ include "tf_main_config" {
 }
 
 inputs = {
-  project               = local.config.general.project
-  env-short             = local.config.general.env-short
-  s3bucket-tfstate      = "${local.config.general.env-short}-${local.config.general.project}-tfstate"
-  dynamodb-tfstate      = "${local.config.general.env-short}-${local.config.general.project}-tfstate"
+  project          = local.config.general.project
+  env-short        = local.config.general.env-short
+  s3bucket-tfstate = "${local.config.general.env-short}-${local.config.general.project}-tfstate"
+  dynamodb-tfstate = "${local.config.general.env-short}-${local.config.general.project}-tfstate"
 }
 
 terraform {

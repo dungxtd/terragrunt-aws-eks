@@ -14,27 +14,51 @@ cp -a environments/dev-example-com environments/${ENVIRONMENT_NAME}
 ```
 aws sso login --profile $AWS_PROFILE
 ```
-* Run `terragrunt` from the corresponding environment folder. It will create the tfstate backend services out the box (s3/dynamodb):
+- Ensure the required CLIs are installed and on your `$PATH`:
+  * Terraform `>= 1.6` (e.g. `brew install terraform` or download from releases.hashicorp.com)
+  * Terragrunt `>= 0.67` (e.g. `brew install terragrunt` or grab the latest binary from releases). If you must stay on an older Terragrunt, use the legacy `terragrunt run-all …` syntax and place Terragrunt flags *before* the command (see note below).
+- Run Terragrunt from the corresponding environment folder. It will create the tfstate backend services out of the box (S3/DynamoDB):
 ```
 cd environments/${ENVIRONMENT_NAME}
 
-terragrunt run-all plan \
+terragrunt init --all --terragrunt-include-external-dependencies
+
+terragrunt plan --all \
   --terragrunt-include-external-dependencies \
   --terragrunt-non-interactive
 ```
 * Eventually, apply the plan:
 ```
-terragrunt run-all apply \
+terragrunt apply --all \
   --terragrunt-include-external-dependencies
 ```
+
+> **Note for legacy Terragrunt (< 0.52)**  
+> Those versions don't understand the `--all` flag and will forward Terragrunt options to Terraform. In that case use the older syntax instead:
+> ```
+> terragrunt --terragrunt-include-external-dependencies run-all init
+> terragrunt --terragrunt-include-external-dependencies --terragrunt-non-interactive run-all plan
+> terragrunt --terragrunt-include-external-dependencies run-all apply
+> ```
+> Flags belong *before* the command when using `run-all`.
+
+# ECS deployments
+
+- `tg-modules/ecs` provisions ECS clusters, services, and dedicated load balancers from the new `ecs` block in each environment `config.yaml`.
+- Container/task definitions are supplied through `task.containers` maps, which mirror the Oryx configuration that was previously delivered through the EKS Helm chart. You can override images, env vars, ports, and logging per service.
+- `load-balancer-config` supports either network or application load balancers. Each listener maps to a specific container/port pair and reuses the same exposed port definitions that were defined for EKS.
+- Shared ALBs are supported: declare them once under `ecs.regions[*].load-balancers`, then point multiple services at the same listener while adding path-based rules (e.g., `/comment*`, `/stream*`) directly in the service `load-balancer-config`.
+- Terragrunt now exposes `ecs_clusters`, `ecs_services`, and `ecs_load_balancers` alongside the existing EKS outputs so downstream modules (or automation) can target either orchestrator without code changes.
+- The original EKS modules remain available; you can run both orchestrators in parallel while you migrate workloads.
 
 # Switching between environments
 
 Everything you need to do is to run a terraform reconfigure before being able to plan/apply a different environment:
 ```
 cd environments/${ENVIRONMENT_NAME}
-terragrunt run-all init -reconfigure \
-  --terragrunt-include-external-dependencies
+terragrunt init --all \
+  --terragrunt-include-external-dependencies \
+  --terragrunt-non-interactive
 ```
 
 # Applying only specific modules
@@ -44,8 +68,8 @@ This terragrunt projects maintains separate, smaller, tfstates for each module t
 ```
 export ENVIRONMENT_NAME=whatever
 cd tg-modules/route53
-terragrunt init -reconfigure # This is important if you've used any other environment before
-terragrunt plan
+terragrunt init -reconfigure --terragrunt-non-interactive # Important if you've used any other environment before
+terragrunt plan --terragrunt-non-interactive
 ```
 
 Optionally you can also target specific resources for the module just like you'd do with plain terraform by adding `-target=resource_type.resource_name`.
@@ -58,7 +82,7 @@ Since at this point where we want to destroy everything we don't care about inco
 
 * Executing a `terragrunt run-all plan` like this:
 ```
-terragrunt run-all plan \
+terragrunt plan --all \
   --terragrunt-include-external-dependencies \
   --terragrunt-non-interactive \
   --terragrunt-debug
@@ -73,13 +97,13 @@ done
 * Executing the destroy-all command from the `environment/$ENV` dir or executing them from each tg-module dir independently (recommended):
   * run-all:
 ```
-terragrunt run-all destroy \
+terragrunt destroy --all \
   --terragrunt-include-external-dependencies \
   --terragrunt-non-interactive
 ```
   * run for each:
 ```
-for tgm in tg-modules/*; do cd $tgm; terragrunt destroy   --terragrunt-non-interactive -auto-approve; cd -; done
+for tgm in tg-modules/*; do cd "$tgm"; terragrunt destroy --terragrunt-non-interactive -auto-approve; cd -; done
 ```
 * And last but not least, cleaning up the folders with: 
 ```

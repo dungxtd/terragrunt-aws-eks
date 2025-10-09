@@ -92,12 +92,185 @@ default-eks-addons: &default-eks-addons
     addon-version: v1.12.2-eksbuild.4
     resolve-conflicts: "OVERWRITE"
 
+default-ecs-service: &default-ecs-service
+  launch-type: FARGATE
+  platform-version: "1.4.0"
+  desired-count: 1
+  assign-public-ip: true
+  deployment-controller: ECS
+  min-healthy-percent: 50
+  max-percent: 200
+  capacity-provider-strategy:
+    - capacity-provider: FARGATE
+      weight: 1
+
+default-ecs-task-base: &default-ecs-task-base
+  requires-compatibilities:
+    - FARGATE
+  network-mode: awsvpc
+  execution-role-policy-arns:
+    - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+  task-role-policy-arns: []
+
+default-ecs-security-ingress: &default-ecs-security-ingress
+  - description: Allow HTTP
+    from-port: 8080
+    to-port: 8080
+    protocol: tcp
+    cidr-blocks:
+      - 0.0.0.0/0
+
+default-ecs-load-balancer-default-action: &default-ecs-load-balancer-default-action
+  type: fixed-response
+  fixed-response:
+    status-code: "404"
+    content-type: "text/plain"
+    message-body: "not found"
+
+comment-task: &comment-task
+  <<: *default-ecs-task-base
+  family: "comment"
+  cpu: 512
+  memory: 1024
+  containers:
+    comment:
+      image: "public.ecr.aws/nginx/nginx:stable"
+      cpu: 512
+      memory: 1024
+      essential: true
+      environment: {}
+      port-mappings:
+        - container-port: 8080
+          protocol: tcp
+      log-configuration:
+        log-driver: awslogs
+        options:
+          awslogs-group: "/ecs/comment"
+          awslogs-region: ap-southeast-1
+          awslogs-stream-prefix: comment
+
+stream-task: &stream-task
+  <<: *default-ecs-task-base
+  family: "stream"
+  cpu: 1024
+  memory: 2048
+  containers:
+    stream:
+      image: "ghcr.io/dungxtd/oryx:1.0.7"
+      cpu: 1024
+      memory: 2048
+      essential: true
+      environment:
+        SRS_LOG_TANK: console
+      port-mappings:
+        - container-port: 8080
+          protocol: tcp
+      log-configuration:
+        log-driver: awslogs
+        options:
+          awslogs-group: "/ecs/stream"
+          awslogs-region: ap-southeast-1
+          awslogs-stream-prefix: stream
+
+comment-service: &comment-service
+  <<: *default-ecs-service
+  name: "comment"
+  assign-public-ip: false
+
+stream-service: &stream-service
+  <<: *default-ecs-service
+  name: "stream"
+  assign-public-ip: false
+
+comment-definition: &comment-definition
+  service: *comment-service
+  task: *comment-task
+  log-group:
+    name: "/ecs/comment"
+    retention-in-days: 30
+  network:
+    vpc: terragrunt-aws
+    subnets:
+      - name: default
+        kind: private
+      - name: default
+        kind: public
+  security-group:
+    name: "comment-fargate-sg"
+    description: "Ingress for comment ECS service"
+    ingress: *default-ecs-security-ingress
+  load-balancer-config:
+    shared:
+      load-balancer: public-alb
+      listener: http
+      rules:
+        - priority: 10
+          conditions:
+            path-patterns:
+              - /comment*
+    listeners:
+      http:
+        listener-port: 80
+        listener-protocol: HTTP
+        target-port: 8080
+        target-protocol: HTTP
+        container-name: comment
+        container-port: 8080
+        health-check:
+          protocol: HTTP
+          port: 8080
+          path: /
+
+stream-definition: &stream-definition
+  service: *stream-service
+  task: *stream-task
+  log-group:
+    name: "/ecs/stream"
+    retention-in-days: 30
+  network:
+    vpc: terragrunt-aws
+    subnets:
+      - name: default
+        kind: private
+      - name: default
+        kind: public
+  security-group:
+    name: "stream-fargate-sg"
+    description: "Ingress for stream ECS service"
+    ingress: *default-ecs-security-ingress
+  load-balancer-config:
+    shared:
+      load-balancer: public-alb
+      listener: http
+      rules:
+        - priority: 20
+          conditions:
+            path-patterns:
+              - /stream*
+    listeners:
+      http:
+        listener-port: 80
+        listener-protocol: HTTP
+        target-port: 8080
+        target-protocol: HTTP
+        container-name: stream
+        container-port: 8080
+        health-check:
+          protocol: HTTP
+          port: 8080
+          path: /
+
+default-ecs-services: &default-ecs-services
+  comment: *comment-definition
+  stream: *stream-definition
+
 alb-dns-aliases: &default-alb-dns-aliases
   - api
   - auth-api
   - oryx-web  # For Oryx HTTP-FLV web UI
 
 eks:
+  enabled: false
   cluster-module-source: cloudposse/eks-cluster/aws
   cluster-module-version: 4.6.0
   node-group-module-source: cloudposse/eks-node-group/aws
@@ -176,6 +349,38 @@ eks:
             autoscaler-enabled: false
             exposed-ports:
               <<: *default-exposed-ports
+ecs:
+  regions:
+    ap-southeast-1:
+      stream-services:
+        name: "stream-services"
+        capacity-providers:
+          - FARGATE
+        load-balancers:
+          public-alb:
+            type: alb
+            scheme: internet-facing
+            enable-http2: true
+            vpc: terragrunt-aws
+            security-group:
+              name: "stream-services-shared-alb-sg"
+              description: "Ingress for shared ALB"
+              ingress:
+                - description: Allow HTTP
+                  from-port: 80
+                  to-port: 80
+                  protocol: tcp
+                  cidr-blocks:
+                    - 0.0.0.0/0
+            subnets:
+              - name: default
+                kind: public
+            listeners:
+              http:
+                listener-port: 80
+                listener-protocol: HTTP
+                default-action: *default-ecs-load-balancer-default-action
+        services: *default-ecs-services
 network:
   default_region: "ap-southeast-1"
   # NOTE: vpc names will be prefixed with env_short

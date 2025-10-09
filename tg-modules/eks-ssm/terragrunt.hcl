@@ -1,8 +1,8 @@
 # configure terragrunt behaviours with these
 locals {
   ENVIRONMENT_NAME = get_env("ENVIRONMENT_NAME", "development")
-  config = yamldecode(file("../../environments/${ get_env("ENVIRONMENT_NAME", "development") }/config.yaml"))
-  default_outputs = {}
+  config           = yamldecode(file("../../environments/${get_env("ENVIRONMENT_NAME", "development")}/config.yaml"))
+  default_outputs  = {}
 }
 
 include "tf_main_config" {
@@ -18,31 +18,31 @@ dependencies {
 }
 
 dependency "eks" {
-  config_path = "../../tg-modules//eks"
-  skip_outputs = false
+  config_path                             = "../../tg-modules//eks"
+  skip_outputs                            = false
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
   mock_outputs = {
-    eks_clusters = {}
-    eks_node_groups = {}
+    eks_clusters       = {}
+    eks_node_groups    = {}
     eks_node_groups_sg = {}
   }
 }
 
 dependency "kms" {
-  config_path = "../../tg-modules//kms"
-  skip_outputs = false
+  config_path                             = "../../tg-modules//kms"
+  skip_outputs                            = false
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
   mock_outputs = {
     kms_multi_region_key_arn = "Known after apply (this is a mocked input from terragrunt)"
-    kms_regional = {}
+    kms_regional             = {}
   }
 }
 
 inputs = {
 
-  eks_clusters_json = dependency.eks.outputs.eks_clusters
-  eks_node_groups_json = dependency.eks.outputs.eks_node_groups
-  kms_regional_json = dependency.kms.outputs.kms_regional 
+  eks_clusters_json        = dependency.eks.outputs.eks_clusters
+  eks_node_groups_json     = dependency.eks.outputs.eks_node_groups
+  kms_regional_json        = dependency.kms.outputs.kms_regional
   kms_multi_region_key_arn = dependency.kms.outputs.kms_multi_region_key_arn
 
 }
@@ -53,18 +53,18 @@ generate "dynamic-ssm-resources" {
   contents  = <<EOF
 
 locals {
-  env_short = "${ chomp(try(local.config.general.env-short, "dev")) }"
-  project = "${ chomp(try(local.config.general.project, "PROJECT_NAME")) }"
-  app_namespace = "${ chomp(try(local.config.general.app-namespace, "${ chomp(try(local.config.general.project, "PROJECT_NAME")) }")) }"
-  docker_registry_url = "${ chomp(get_env("DOCKER_REGISTRY_URL", "registry.hub.docker.com")) }"
-  docker_registry_user = "${ chomp(get_env("DOCKER_REGISTRY_USER", "user")) }"
-  docker_registry_pass = "${ chomp(get_env("DOCKER_REGISTRY_PASS", "pass")) }"
-  docker_registry_email = "${ chomp(get_env("DOCKER_REGISTRY_EMAIL", "web3-team-integrations@cardanofoundation.org")) }"
+  env_short = "${chomp(try(local.config.general.env-short, "dev"))}"
+  project = "${chomp(try(local.config.general.project, "PROJECT_NAME"))}"
+  app_namespace = "${chomp(try(local.config.general.app-namespace, "${chomp(try(local.config.general.project, "PROJECT_NAME"))}"))}"
+  docker_registry_url = "${chomp(get_env("DOCKER_REGISTRY_URL", "registry.hub.docker.com"))}"
+  docker_registry_user = "${chomp(get_env("DOCKER_REGISTRY_USER", "user"))}"
+  docker_registry_pass = "${chomp(get_env("DOCKER_REGISTRY_PASS", "pass"))}"
+  docker_registry_email = "${chomp(get_env("DOCKER_REGISTRY_EMAIL", "web3-team-integrations@cardanofoundation.org"))}"
 }
 
 data "aws_caller_identity" "current" {}
 
-%{ for eks_region_k, eks_region_v in try(local.config.eks.regions, { } ) ~}
+%{for eks_region_k, eks_region_v in try(local.config.eks.regions, {})~}
 
 resource "aws_iam_policy" "ssm_${eks_region_k}" {
 
@@ -91,7 +91,7 @@ resource "aws_iam_policy" "ssm_${eks_region_k}" {
   })
 }
 
-  %{ for eks_name, eks_values in eks_region_v ~}
+  %{for eks_name, eks_values in eks_region_v~}
 
 resource "random_password" "${eks_region_k}_${eks_name}_poo_api_password" {
   length           = 20
@@ -268,18 +268,18 @@ resource "kubernetes_secret" "${eks_region_k}_${eks_name}_docker_cfg" {
 
 }
 
-    %{ for eng_name, eng_values in eks_values.node-groups ~}
+    %{for eng_name, eng_values in eks_values.node-groups~}
 
 resource "aws_iam_role_policy_attachment" "ssm_eks_${eks_region_k}_${eks_name}_${eng_name}" {
   policy_arn = aws_iam_policy.ssm_${eks_region_k}.arn
   role       = jsondecode(var.eks_node_groups_json).eks_node_group_${eks_region_k}_${eks_name}_${eng_name}.eng_info.eks_node_group_role_name
 }
 
-    %{ endfor ~}
+    %{endfor~}
 
-  %{ endfor ~}
+  %{endfor~}
 
-%{ endfor ~}
+%{endfor~}
 
 EOF
 }

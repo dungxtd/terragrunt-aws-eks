@@ -1,8 +1,8 @@
 # configure terragrunt behaviours with these
 locals {
   ENVIRONMENT_NAME = get_env("ENVIRONMENT_NAME", "development")
-  config = yamldecode(file("../../environments/${ get_env("ENVIRONMENT_NAME", "development") }/config.yaml"))
-  default_outputs = {}
+  config           = yamldecode(file("../../environments/${get_env("ENVIRONMENT_NAME", "development")}/config.yaml"))
+  default_outputs  = {}
 }
 
 include "tf_main_config" {
@@ -17,28 +17,28 @@ dependencies {
 }
 
 dependency "eks" {
-  config_path = "../../tg-modules//eks"
-  skip_outputs = false
+  config_path                             = "../../tg-modules//eks"
+  skip_outputs                            = false
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
   mock_outputs = {
-    eks_clusters = {}
+    eks_clusters    = {}
     eks_node_groups = {}
   }
 }
 
 dependency "eks_lb" {
-  config_path = "../../tg-modules//eks-lb"
-  skip_outputs = false
+  config_path                             = "../../tg-modules//eks-lb"
+  skip_outputs                            = false
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
   mock_outputs = {
     eks_load_balancers = {}
-    eks_albs = {}
+    eks_albs           = {}
   }
 }
 
 inputs = {
 
-  eks_clusters_json = dependency.eks.outputs.eks_clusters
+  eks_clusters_json       = dependency.eks.outputs.eks_clusters
   eks_load_balancers_json = dependency.eks_lb.outputs.eks_load_balancers
 
 }
@@ -48,9 +48,9 @@ generate "dynamic-helm-modules" {
   if_exists = "overwrite"
   contents  = <<EOF
 
-%{ for eks_region_k, eks_region_v in try(local.config.eks.regions, { } ) ~}
+%{for eks_region_k, eks_region_v in try(local.config.eks.regions, {})~}
 
-  %{ for eks_name, eks_values in eks_region_v ~}
+  %{for eks_name, eks_values in eks_region_v~}
 
 data "aws_eks_cluster_auth" "eks_auth_${eks_region_k}_${eks_name}" {
   name  = jsondecode(var.eks_clusters_json).eks_cluster_${eks_region_k}_${eks_name}.eks_info.eks_cluster_id
@@ -142,27 +142,27 @@ resource "kubernetes_annotations" "${eks_region_k}_${eks_name}_gp2_disable_defau
   }
 }
 
-    %{ for chart_k, chart_v in eks_values.helm-charts ~}
+    %{for chart_k, chart_v in eks_values.helm-charts~}
 
 
 resource "helm_release" "${eks_region_k}_${eks_name}_${chart_k}" {
   provider   = helm.${eks_region_k}_${eks_name}
-  %{ if try("${chart_v.repository}", "") != "" }
+  %{if try("${chart_v.repository}", "") != ""}
   repository = "${chart_v.repository}"
-  %{ endif ~}
-  namespace  = "${ chomp(try("${chart_v.namespace}", "default")) }"
+  %{endif~}
+  namespace  = "${chomp(try("${chart_v.namespace}", "default"))}"
   create_namespace = true
   chart      = "${chart_k}"
   name       = "${chart_k}"
 
-  %{if try(chart_v.valuesSet, "") != "" ~}
-    %{for set_k, set_v in chart_v.valuesSet ~}
+  %{if try(chart_v.valuesSet, "") != ""~}
+    %{for set_k, set_v in chart_v.valuesSet~}
   set {
     name  = "${set_k}"
     value = "${set_v}"
   }
-    %{ endfor ~}
-  %{ endif ~}
+    %{endfor~}
+  %{endif~}
 
   values = [<<EOT
 ${yamlencode(chart_v.valuesYAMLTemplate)}
@@ -171,11 +171,11 @@ EOT
 
 }
 
-    %{ endfor ~}
+    %{endfor~}
 
-  %{ endfor ~}
+  %{endfor~}
 
-%{ endfor ~}
+%{endfor~}
 EOF
 }
 

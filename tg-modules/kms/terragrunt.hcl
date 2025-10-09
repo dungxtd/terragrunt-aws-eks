@@ -1,8 +1,8 @@
 # configure terragrunt behaviours with these
 locals {
   ENVIRONMENT_NAME = get_env("ENVIRONMENT_NAME", "development")
-  config = yamldecode(file("../../environments/${ get_env("ENVIRONMENT_NAME", "development") }/config.yaml"))
-  default_outputs = {}
+  config           = yamldecode(file("../../environments/${get_env("ENVIRONMENT_NAME", "development")}/config.yaml"))
+  default_outputs  = {}
 }
 
 include "tf_main_config" {
@@ -16,19 +16,19 @@ dependencies {
 }
 
 dependency "eks" {
-  config_path = "../../tg-modules//eks"
-  skip_outputs = false
+  config_path                             = "../../tg-modules//eks"
+  skip_outputs                            = false
   mock_outputs_allowed_terraform_commands = ["init", "validate", "plan", "destroy"]
   mock_outputs = {
-    eks_clusters = {}
-    eks_node_groups = {}
+    eks_clusters       = {}
+    eks_node_groups    = {}
     eks_node_groups_sg = {}
   }
 }
 
 inputs = {
 
-  eks_clusters_json = dependency.eks.outputs.eks_clusters
+  eks_clusters_json    = dependency.eks.outputs.eks_clusters
   eks_node_groups_json = dependency.eks.outputs.eks_node_groups
 
 }
@@ -39,8 +39,8 @@ generate "dynamic-kms-resources" {
   contents  = <<EOF
 
 locals {
-  env_short = "${ chomp(try(local.config.general.env-short, "dev")) }"
-  project = "${ chomp(try(local.config.general.project, "PROJECT_NAME")) }"
+  env_short = "${chomp(try(local.config.general.env-short, "dev"))}"
+  project = "${chomp(try(local.config.general.project, "PROJECT_NAME"))}"
 }
 
 data "aws_caller_identity" "current" {}
@@ -77,7 +77,7 @@ resource "aws_iam_policy" "kms_multi_region" {
   })
 }
 
-%{ for eks_region_k, eks_region_v in try(local.config.eks.regions, { } ) ~}
+%{for eks_region_k, eks_region_v in try(local.config.eks.regions, {})~}
 
 module "kms_${eks_region_k}" {
 
@@ -115,9 +115,9 @@ resource "aws_iam_policy" "kms_${eks_region_k}" {
   })
 }
 
-  %{ for eks_name, eks_values in eks_region_v ~}
+  %{for eks_name, eks_values in eks_region_v~}
 
-    %{ for eng_name, eng_values in eks_values.node-groups ~}
+    %{for eng_name, eng_values in eks_values.node-groups~}
 
 resource "aws_iam_role_policy_attachment" "kms_policy_${eks_region_k}_${eks_name}_${eng_name}" {
   policy_arn = aws_iam_policy.kms_multi_region.arn
@@ -129,11 +129,11 @@ resource "aws_iam_role_policy_attachment" "kms_regional_policy_${eks_region_k}_$
   role       = jsondecode(var.eks_node_groups_json).eks_node_group_${eks_region_k}_${eks_name}_${eng_name}.eng_info.eks_node_group_role_name
 }
 
-    %{ endfor ~}
+    %{endfor~}
 
-  %{ endfor ~}
+  %{endfor~}
 
-%{ endfor ~}
+%{endfor~}
 
 EOF
 }
@@ -163,14 +163,14 @@ output kms_regional {
 
     value = merge(
 
-%{ for kms_regional_region_k, kms_regional_region_v in try(local.config.eks.regions, { } ) ~}
+%{for kms_regional_region_k, kms_regional_region_v in try(local.config.eks.regions, {})~}
 
       {
         for key, value in module.kms_${kms_regional_region_k}[*]:
             "kms_regional_${kms_regional_region_k}" => { "kms_regional_info" = value }
       },
 
-%{ endfor ~}
+%{endfor~}
    )
 }
 
